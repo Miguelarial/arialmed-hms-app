@@ -1,16 +1,24 @@
-resource "azurerm_app_service_plan" "main" {
+resource "azurerm_service_plan" "main" {
   name                = "${var.name}-plan"
   location            = var.location
   resource_group_name = var.resource_group_name
-  sku {
-    tier = "Free"
-    size = "F1"
-  }
+  os_type            = "Linux"
+  sku_name           = "B1"
 }
 
-resource "azurerm_app_service" "main" {
+resource "azurerm_linux_web_app" "main" {
   name                = var.name
   location            = var.location
   resource_group_name = var.resource_group_name
-  app_service_plan_id = azurerm_app_service_plan.main.id
+  service_plan_id     = azurerm_service_plan.main.id
+
+  site_config {
+    application_stack {
+      node_version = "18-lts"
+    }
+  }
+
+  identity {
+    type = "SystemAssigned"
+  }
 }
