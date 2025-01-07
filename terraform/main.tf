@@ -1,3 +1,9 @@
+resource "random_string" "unique" {
+  length  = 8
+  special = false
+  upper   = false
+}
+
 module "resource_group" {
   source  = "./modules/resource-group"
   name    = "arialmed-infra-rg"
@@ -34,29 +40,29 @@ module "vm" {
   data_disk_size      = 50
 }
 
-module "app_service" {
-  source              = "./modules/app-service"
-  name                = "arialmed-app-service"
-  location            = var.region
-  resource_group_name = module.resource_group.name
-}
-
 module "static_web_app" {
   source              = "./modules/static-web-app"
   name                = "arialmed-static-web-app"
-  location            = var.region
+  location            = "westeurope"
   resource_group_name = module.resource_group.name
   app_location        = "app"
   api_location        = "api"
   output_location     = "build"
 }
 
+resource "azurerm_service_plan" "main" {
+  name                = "arialmed-app-plan"
+  location            = var.region
+  resource_group_name = module.resource_group.name
+  os_type             = "Linux"
+  sku_name            = "Y1"  
+}
+
 module "azure_functions" {
-  source                  = "./modules/azure-functions"
-  name                    = "arialmed-functions"
-  location                = var.region
-  resource_group_name     = module.resource_group.name
-  service_plan_id         = azurerm_service_plan.main.id
-  storage_account_name    = "yourstorageaccount"
-  storage_account_access_key = "yourstorageaccountkey"
+  source              = "./modules/az-functions"
+  name                = "arialmed-functions-${random_string.unique.result}"
+  location            = var.region
+  resource_group_name = module.resource_group.name
+  app_service_plan_id = azurerm_service_plan.main.id
+  storage_account_name = "arialmedfn${random_string.unique.result}"
 }
