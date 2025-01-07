@@ -40,3 +40,23 @@ module "app_service" {
   location            = var.region
   resource_group_name = module.resource_group.name
 }
+
+module "static_web_app" {
+  source              = "./modules/static-web-app"
+  name                = "arialmed-static-web-app"
+  location            = var.region
+  resource_group_name = module.resource_group.name
+  app_location        = "app"
+  api_location        = "api"
+  output_location     = "build"
+}
+
+module "azure_functions" {
+  source                  = "./modules/azure-functions"
+  name                    = "arialmed-functions"
+  location                = var.region
+  resource_group_name     = module.resource_group.name
+  service_plan_id         = azurerm_service_plan.main.id
+  storage_account_name    = "yourstorageaccount"
+  storage_account_access_key = "yourstorageaccountkey"
+}
