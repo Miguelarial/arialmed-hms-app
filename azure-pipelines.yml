@@ -1,0 +1,128 @@
+trigger:
+  branches:
+    include:
+      - main
+
+variables:
+  - group: arialmed-variables
+  - name: vmImageName
+    value: 'ubuntu-latest'
+  - name: nodeVersion
+    value: '18.x'
+  - name: azureServiceConnection
+    value: 'arialmed-sc'
+
+stages:
+- stage: Build
+  displayName: 'Build'
+  jobs:
+  - job: BuildAndTest
+    displayName: 'Build and Test'
+    pool:
+      vmImage: $(vmImageName)
+    steps:
+    - task: NodeTool@0
+      displayName: 'Install Node.js'
+      inputs:
+        versionSpec: $(nodeVersion)
+
+    - task: Cache@2
+      displayName: 'Cache npm packages'
+      inputs:
+        key: 'npm | "$(Agent.OS)" | package-lock.json'
+        restoreKeys: |
+          npm | "$(Agent.OS)"
+        path: $(Pipeline.Workspace)/.npm
+
+    - script: npm ci
+      displayName: 'Install Dependencies'
+
+    - script: npm run build
+      displayName: 'Build Next.js App'
+      env:
+        NEXT_PUBLIC_FUNCTION_URL: 'https://$(functionAppName).azurewebsites.net'
+        NEXT_PUBLIC_STATIC_WEB_APP_URL: $(STATIC_WEB_APP_URL)
+        NEXT_PUBLIC_ENDPOINT: $(NEXT_PUBLIC_ENDPOINT)
+        PROJECT_ID: $(PROJECT_ID)
+        API_KEY: $(API_KEY)
+        DATABASE_ID: $(DATABASE_ID)
+        PATIENT_COLLECTION_ID: $(PATIENT_COLLECTION_ID)
+        DOCTOR_COLLECTION_ID: $(DOCTOR_COLLECTION_ID)
+        APPOINTMENT_COLLECTION_ID: $(APPOINTMENT_COLLECTION_ID)
+        NEXT_PUBLIC_BUCKET_ID: $(NEXT_PUBLIC_BUCKET_ID)
+        NEXT_PUBLIC_ADMIN_PASSKEY: $(NEXT_PUBLIC_ADMIN_PASSKEY)
+        NEXT_PUBLIC_SERVICEID: $(NEXT_PUBLIC_SERVICEID)
+        NEXT_PUBLIC_TEMPLATEID: $(NEXT_PUBLIC_TEMPLATEID)
+        NEXT_PUBLIC_APIKEY: $(NEXT_PUBLIC_APIKEY)
+
+    # Archive Azure Functions
+    - task: ArchiveFiles@2
+      displayName: 'Archive Function App'
+      inputs:
+        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/app/api'
+        includeRootFolder: false
+        archiveType: 'zip'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/function-app.zip'
+        replaceExistingArchive: true
+
+    # Archive Static Web App
+    - task: ArchiveFiles@2
+      displayName: 'Archive Static Web App'
+      inputs:
+        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/app'
+        includeRootFolder: false
+        archiveType: 'zip'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/static-web-app.zip'
+        replaceExistingArchive: true
+
+    - publish: $(Build.ArtifactStagingDirectory)
+      artifact: drop
+
+- stage: Deploy
+  displayName: 'Deploy'
+  dependsOn: Build
+  jobs:
+  - deployment: DeployFunctionApp
+    displayName: 'Deploy Function App'
+    environment: 'production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureFunctionApp@1
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              appType: 'functionAppLinux'
+              appName: $(functionAppName)
+              package: '$(Pipeline.Workspace)/drop/function-app.zip'
+              runtimeStack: 'NODE|18'
+              appSettings: |
+                -NEXT_PUBLIC_ENDPOINT "$(NEXT_PUBLIC_ENDPOINT)"
+                -PROJECT_ID "$(PROJECT_ID)"
+                -API_KEY "$(API_KEY)"
+                -DATABASE_ID "$(DATABASE_ID)"
+                -PATIENT_COLLECTION_ID "$(PATIENT_COLLECTION_ID)"
+                -DOCTOR_COLLECTION_ID "$(DOCTOR_COLLECTION_ID)"
+                -APPOINTMENT_COLLECTION_ID "$(APPOINTMENT_COLLECTION_ID)"
+                -NEXT_PUBLIC_BUCKET_ID "$(NEXT_PUBLIC_BUCKET_ID)"
+                -NEXT_PUBLIC_ADMIN_PASSKEY "$(NEXT_PUBLIC_ADMIN_PASSKEY)"
+                -NEXT_PUBLIC_SERVICEID "$(NEXT_PUBLIC_SERVICEID)"
+                -NEXT_PUBLIC_TEMPLATEID "$(NEXT_PUBLIC_TEMPLATEID)"
+                -NEXT_PUBLIC_APIKEY "$(NEXT_PUBLIC_APIKEY)"
+
+  - deployment: DeployStaticWebApp
+    displayName: 'Deploy Static Web App'
+    environment: 'production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureStaticWebApp@0
+            inputs:
+              app_location: 'app'
+              api_location: 'api'
+              output_location: 'build'
+              azure_static_web_apps_api_token: $(STATIC_WEB_APP_DEPLOYMENT_TOKEN)
+              skip_app_build: false
+              skip_api_build: false
+              verbose: true
