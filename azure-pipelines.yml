@@ -2,7 +2,6 @@ trigger:
   branches:
     include:
       - main
-
 variables:
   - group: arialmed-variables
   - name: vmImageName
@@ -11,7 +10,7 @@ variables:
     value: '18.x'
   - name: azureServiceConnection
     value: 'arialmed-sc'
-
+    
 stages:
 - stage: Build
   displayName: 'Build'
@@ -48,13 +47,22 @@ stages:
         NEXT_PUBLIC_APIKEY: $(NEXT_PUBLIC_APIKEY)
 
     - script: |
-        cp $(System.DefaultWorkingDirectory)/staticwebapp.config.json $(System.DefaultWorkingDirectory)/.next/
+        cp $(System.DefaultWorkingDirectory)/staticwebapp.config.json $(System.DefaultWorkingDirectory)/.next/standalone/
       displayName: 'Copy Static Web App Config'
+
+    - task: ArchiveFiles@2
+      displayName: 'Archive Function App'
+      inputs:
+        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/app/api'
+        includeRootFolder: false
+        archiveType: 'zip'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/function-app.zip'
+        replaceExistingArchive: true
 
     - task: ArchiveFiles@2
       displayName: 'Archive Static Web App'
       inputs:
-        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/.next'
+        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/.next/standalone'
         includeRootFolder: false
         archiveType: 'zip'
         archiveFile: '$(Build.ArtifactStagingDirectory)/static-web-app.zip'
@@ -67,6 +75,34 @@ stages:
   displayName: 'Deploy'
   dependsOn: Build
   jobs:
+  - deployment: DeployFunctionApp
+    displayName: 'Deploy Function App'
+    environment: 'production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureFunctionApp@1
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              appType: 'functionAppLinux'
+              appName: $(functionAppName)
+              package: '$(Pipeline.Workspace)/drop/function-app.zip'
+              runtimeStack: 'NODE|18'
+              appSettings: |
+                -NEXT_PUBLIC_ENDPOINT "$(NEXT_PUBLIC_ENDPOINT)"
+                -PROJECT_ID "$(PROJECT_ID)"
+                -API_KEY "$(API_KEY)"
+                -DATABASE_ID "$(DATABASE_ID)"
+                -PATIENT_COLLECTION_ID "$(PATIENT_COLLECTION_ID)"
+                -DOCTOR_COLLECTION_ID "$(DOCTOR_COLLECTION_ID)"
+                -APPOINTMENT_COLLECTION_ID "$(APPOINTMENT_COLLECTION_ID)"
+                -NEXT_PUBLIC_BUCKET_ID "$(NEXT_PUBLIC_BUCKET_ID)"
+                -NEXT_PUBLIC_ADMIN_PASSKEY "$(NEXT_PUBLIC_ADMIN_PASSKEY)"
+                -NEXT_PUBLIC_SERVICEID "$(NEXT_PUBLIC_SERVICEID)"
+                -NEXT_PUBLIC_TEMPLATEID "$(NEXT_PUBLIC_TEMPLATEID)"
+                -NEXT_PUBLIC_APIKEY "$(NEXT_PUBLIC_APIKEY)"
+
   - deployment: DeployStaticWebApp
     displayName: 'Deploy Static Web App'
     environment: 'production'
@@ -74,11 +110,20 @@ stages:
       runOnce:
         deploy:
           steps:
+          - download: current
+            artifact: drop
+            
+          - task: ExtractFiles@1
+            inputs:
+              archiveFilePatterns: '$(Pipeline.Workspace)/drop/static-web-app.zip'
+              destinationFolder: '$(Pipeline.Workspace)/site'
+              cleanDestinationFolder: true
+              
           - task: AzureStaticWebApp@0
             inputs:
-              app_location: '/app'
+              app_location: '$(Pipeline.Workspace)/site'
               api_location: ''
-              output_location: '.next'
-              skip_app_build: true
+              output_location: ''
               azure_static_web_apps_api_token: $(STATIC_WEB_APP_DEPLOYMENT_TOKEN)
+              skip_app_build: true
               verbose: true
