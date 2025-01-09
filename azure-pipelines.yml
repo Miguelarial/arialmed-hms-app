@@ -26,19 +26,6 @@ stages:
       inputs:
         versionSpec: $(nodeVersion)
 
-    - task: Cache@2
-      displayName: 'Cache npm packages'
-      inputs:
-        key: 'npm | "$(Agent.OS)" | package-lock.json'
-        restoreKeys: |
-          npm | "$(Agent.OS)"
-        path: '$(Pipeline.Workspace)/npm'
-
-    - script: |
-        mkdir -p $(Pipeline.Workspace)/npm
-        npm config set cache $(Pipeline.Workspace)/npm --global
-      displayName: 'Setup npm cache directory'
-
     - script: npm ci
       displayName: 'Install Dependencies'
 
@@ -61,13 +48,13 @@ stages:
         NEXT_PUBLIC_APIKEY: $(NEXT_PUBLIC_APIKEY)
 
     - script: |
-        cp $(System.DefaultWorkingDirectory)/staticwebapp.config.json $(System.DefaultWorkingDirectory)/.next/standalone/app/
+        cp $(System.DefaultWorkingDirectory)/staticwebapp.config.json $(System.DefaultWorkingDirectory)/.next/
       displayName: 'Copy Static Web App Config'
 
     - task: ArchiveFiles@2
       displayName: 'Archive Static Web App'
       inputs:
-        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/.next/standalone/app'
+        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/.next'
         includeRootFolder: false
         archiveType: 'zip'
         archiveFile: '$(Build.ArtifactStagingDirectory)/static-web-app.zip'
@@ -89,9 +76,9 @@ stages:
           steps:
           - task: AzureStaticWebApp@0
             inputs:
-              app_location: '.'
-              api_location: 'api'
-              output_location: ''
+              app_location: '/app'
+              api_location: ''
+              output_location: '.next'
               skip_app_build: true
               azure_static_web_apps_api_token: $(STATIC_WEB_APP_DEPLOYMENT_TOKEN)
               verbose: true
