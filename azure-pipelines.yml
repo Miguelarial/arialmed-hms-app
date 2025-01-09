@@ -60,10 +60,14 @@ stages:
         NEXT_PUBLIC_TEMPLATEID: $(NEXT_PUBLIC_TEMPLATEID)
         NEXT_PUBLIC_APIKEY: $(NEXT_PUBLIC_APIKEY)
 
+    - script: |
+        cp $(System.DefaultWorkingDirectory)/staticwebapp.config.json $(System.DefaultWorkingDirectory)/.next/standalone/app/
+      displayName: 'Copy Static Web App Config'
+
     - task: ArchiveFiles@2
       displayName: 'Archive Static Web App'
       inputs:
-        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/.next/standalone'
+        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/.next/standalone/app'
         includeRootFolder: false
         archiveType: 'zip'
         archiveFile: '$(Build.ArtifactStagingDirectory)/static-web-app.zip'
@@ -85,7 +89,7 @@ stages:
           steps:
           - task: AzureStaticWebApp@0
             inputs:
-              app_location: '/'
+              app_location: '.'
               api_location: 'api'
               output_location: ''
               skip_app_build: true
