@@ -32,7 +32,12 @@ stages:
         key: 'npm | "$(Agent.OS)" | package-lock.json'
         restoreKeys: |
           npm | "$(Agent.OS)"
-        path: $(Pipeline.Workspace)/.npm
+        path: '$(Pipeline.Workspace)/npm'
+
+    - script: |
+        mkdir -p $(Pipeline.Workspace)/npm
+        npm config set cache $(Pipeline.Workspace)/npm --global
+      displayName: 'Setup npm cache directory'
 
     - script: npm ci
       displayName: 'Install Dependencies'
@@ -55,21 +60,10 @@ stages:
         NEXT_PUBLIC_TEMPLATEID: $(NEXT_PUBLIC_TEMPLATEID)
         NEXT_PUBLIC_APIKEY: $(NEXT_PUBLIC_APIKEY)
 
-    # Archive Azure Functions
-    - task: ArchiveFiles@2
-      displayName: 'Archive Function App'
-      inputs:
-        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/app/api'
-        includeRootFolder: false
-        archiveType: 'zip'
-        archiveFile: '$(Build.ArtifactStagingDirectory)/function-app.zip'
-        replaceExistingArchive: true
-
-    # Archive Static Web App
     - task: ArchiveFiles@2
       displayName: 'Archive Static Web App'
       inputs:
-        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/app'
+        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/.next'
         includeRootFolder: false
         archiveType: 'zip'
         archiveFile: '$(Build.ArtifactStagingDirectory)/static-web-app.zip'
@@ -82,34 +76,6 @@ stages:
   displayName: 'Deploy'
   dependsOn: Build
   jobs:
-  - deployment: DeployFunctionApp
-    displayName: 'Deploy Function App'
-    environment: 'production'
-    strategy:
-      runOnce:
-        deploy:
-          steps:
-          - task: AzureFunctionApp@1
-            inputs:
-              azureSubscription: $(azureServiceConnection)
-              appType: 'functionAppLinux'
-              appName: $(functionAppName)
-              package: '$(Pipeline.Workspace)/drop/function-app.zip'
-              runtimeStack: 'NODE|18'
-              appSettings: |
-                -NEXT_PUBLIC_ENDPOINT "$(NEXT_PUBLIC_ENDPOINT)"
-                -PROJECT_ID "$(PROJECT_ID)"
-                -API_KEY "$(API_KEY)"
-                -DATABASE_ID "$(DATABASE_ID)"
-                -PATIENT_COLLECTION_ID "$(PATIENT_COLLECTION_ID)"
-                -DOCTOR_COLLECTION_ID "$(DOCTOR_COLLECTION_ID)"
-                -APPOINTMENT_COLLECTION_ID "$(APPOINTMENT_COLLECTION_ID)"
-                -NEXT_PUBLIC_BUCKET_ID "$(NEXT_PUBLIC_BUCKET_ID)"
-                -NEXT_PUBLIC_ADMIN_PASSKEY "$(NEXT_PUBLIC_ADMIN_PASSKEY)"
-                -NEXT_PUBLIC_SERVICEID "$(NEXT_PUBLIC_SERVICEID)"
-                -NEXT_PUBLIC_TEMPLATEID "$(NEXT_PUBLIC_TEMPLATEID)"
-                -NEXT_PUBLIC_APIKEY "$(NEXT_PUBLIC_APIKEY)"
-
   - deployment: DeployStaticWebApp
     displayName: 'Deploy Static Web App'
     environment: 'production'
@@ -119,10 +85,8 @@ stages:
           steps:
           - task: AzureStaticWebApp@0
             inputs:
-              app_location: 'app'
-              api_location: 'api'
-              output_location: 'build'
+              app_location: '.next'
+              output_location: ''
+              skip_app_build: true
               azure_static_web_apps_api_token: $(STATIC_WEB_APP_DEPLOYMENT_TOKEN)
-              skip_app_build: false
-              skip_api_build: false
               verbose: true
